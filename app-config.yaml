@@ -21,6 +21,55 @@ app:
   # For local k3d: http://openchoreo.localhost (set via https://github.com/openchoreo/openchoreo install/dev/openchoreo-values.yaml)
   # For production: external ingress URL (set via https://github.com/openchoreo/openchoreo install/helm/openchoreo/values.yaml backstage.baseUrl)
   baseUrl: ${BACKSTAGE_BASE_URL}
+  # Tab groups + order for the canonical entity page.
+  pages:
+    entity:
+      config:
+        defaultContentOrder: natural
+        groups:
+          - overview: { title: Overview }
+          - definition: { title: Definition }
+          - deployment: { title: Deployment, contentOrder: natural }
+          - runtime: { title: Runtime, contentOrder: natural }
+          - analysis: { title: Analysis, contentOrder: natural }
+          - external: { title: External }
+  # Suppress upstream cards that duplicate OC layouts + default themes so
+  # our openchoreo-* themes win the theme picker.
+  extensions:
+    - theme:app/light: false
+    - theme:app/dark: false
+    # `page:kubernetes` is the plugin's standalone /kubernetes page — it
+    # calls useEntity() inside its router and throws when opened without
+    # an entity context. We only want the plugin's entity-page tab, not
+    # this broken top-level page.
+    - page:kubernetes: false
+    - entity-card:catalog/about: false
+    - entity-card:catalog/links: false
+    - entity-card:catalog/labels: false
+    - entity-card:catalog/depends-on-components: false
+    - entity-card:catalog/depends-on-resources: false
+    - entity-card:catalog/has-subcomponents: false
+    - entity-card:catalog/has-components: false
+    - entity-card:catalog/has-resources: false
+    - entity-card:catalog-graph/relations: false
+    - entity-card:api-docs/provided-apis: false
+    - entity-card:api-docs/consumed-apis: false
+    - entity-card:api-docs/has-apis: false
+    # ApiDefinitionCard already lives on the Definition tab; hide the
+    # standalone card on API Overview to avoid duplication.
+    - entity-card:api-docs/definition: false
+    # Providers/Consumers rendered directly by ApiOverviewLayout, so
+    # suppress the auto-contributed cards to prevent duplicates in
+    # ForeignCardsSection.
+    - entity-card:api-docs/providing-components: false
+    - entity-card:api-docs/consuming-components: false
+    # GitLab cards throw when GitLab annotations are absent.
+    - entity-card:gitlab/readme: false
+    - entity-card:gitlab/coverage: false
+    - entity-card:gitlab/releases: false
+    - entity-card:gitlab/merge-requests-stats: false
+    - entity-card:gitlab/people: false
+    - entity-card:gitlab/languages: false
 
 organization:
   name: OpenChoreo

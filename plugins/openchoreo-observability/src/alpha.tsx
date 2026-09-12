@@ -1,13 +1,25 @@
+import MonetizationOnIcon from '@material-ui/icons/MonetizationOn';
 import {
   ApiBlueprint,
   createExtensionInput,
   createFrontendPlugin,
   discoveryApiRef,
   fetchApiRef,
+  PageBlueprint,
   PluginWrapperBlueprint,
 } from '@backstage/frontend-plugin-api';
-import { EntityContentBlueprint } from '@backstage/plugin-catalog-react/alpha';
-import { FeatureGatedContent } from '@openchoreo/backstage-plugin-react';
+import {
+  EntityCardBlueprint,
+  EntityContentBlueprint,
+} from '@backstage/plugin-catalog-react/alpha';
+import {
+  FeatureGate,
+  FeatureGatedContent,
+} from '@openchoreo/backstage-plugin-react';
+import {
+  CHOREO_ANNOTATIONS,
+  isOpenChoreoManagedOfKind,
+} from '@openchoreo/backstage-plugin-common';
 
 import { rootRouteRef } from './routes';
 import {
@@ -119,7 +131,8 @@ const runtimeLogsEntityContent = EntityContentBlueprint.make({
   params: {
     path: '/runtime-logs',
     title: 'Logs',
-    filter: 'kind:component',
+    group: 'runtime',
+    filter: isOpenChoreoManagedOfKind('component'),
     loader: () =>
       import('./components/RuntimeLogs/ObservabilityRuntimeLogsPage').then(
         m => (
@@ -136,7 +149,8 @@ const runtimeEventsEntityContent = EntityContentBlueprint.make({
   params: {
     path: '/runtime-events',
     title: 'Events',
-    filter: 'kind:component',
+    group: 'runtime',
+    filter: isOpenChoreoManagedOfKind('component'),
     loader: () =>
       import('./components/RuntimeEvents/ObservabilityRuntimeEventsPage').then(
         m => (
@@ -153,7 +167,8 @@ const metricsEntityContent = EntityContentBlueprint.make({
   params: {
     path: '/metrics',
     title: 'Metrics',
-    filter: 'kind:component',
+    group: 'runtime',
+    filter: isOpenChoreoManagedOfKind('component'),
     loader: () =>
       import('./components/Metrics/ObservabilityMetricsPage').then(m => (
         <FeatureGatedContent feature="observability">
@@ -168,7 +183,8 @@ const alertsEntityContent = EntityContentBlueprint.make({
   params: {
     path: '/alerts',
     title: 'Alerts',
-    filter: 'kind:component',
+    group: 'runtime',
+    filter: isOpenChoreoManagedOfKind('component'),
     loader: () =>
       import('./components/Alerts/ObservabilityAlertsPage').then(m => (
         <FeatureGatedContent feature="observability">
@@ -183,7 +199,8 @@ const wirelogsEntityContent = EntityContentBlueprint.make({
   params: {
     path: '/wirelogs',
     title: 'Wirelogs',
-    filter: 'kind:component',
+    group: 'runtime',
+    filter: isOpenChoreoManagedOfKind('component'),
     loader: () =>
       import('./components/Wirelogs/ObservabilityWirelogsPage').then(m => (
         <FeatureGatedContent feature="observability">
@@ -204,7 +221,8 @@ const projectRuntimeLogsEntityContent = EntityContentBlueprint.make({
   params: {
     path: '/logs',
     title: 'Logs',
-    filter: 'kind:system',
+    group: 'runtime',
+    filter: isOpenChoreoManagedOfKind('system'),
     loader: () =>
       import(
         './components/RuntimeLogs/ObservabilityProjectRuntimeLogsPage'
@@ -221,7 +239,8 @@ const tracesEntityContent = EntityContentBlueprint.make({
   params: {
     path: '/traces',
     title: 'Traces',
-    filter: 'kind:system',
+    group: 'analysis',
+    filter: isOpenChoreoManagedOfKind('system'),
     loader: () =>
       import('./components/Traces/ObservabilityTracesPage').then(m => (
         <FeatureGatedContent feature="observability">
@@ -236,7 +255,8 @@ const projectIncidentsEntityContent = EntityContentBlueprint.make({
   params: {
     path: '/incidents',
     title: 'Incidents',
-    filter: 'kind:system',
+    group: 'analysis',
+    filter: isOpenChoreoManagedOfKind('system'),
     loader: () =>
       import('./components/Incidents/ObservabilityProjectIncidentsPage').then(
         m => (
@@ -253,7 +273,8 @@ const rcaReportsEntityContent = EntityContentBlueprint.make({
   params: {
     path: '/rca-reports',
     title: 'RCA Reports',
-    filter: 'kind:system',
+    group: 'analysis',
+    filter: isOpenChoreoManagedOfKind('system'),
     loader: () =>
       import('./components/RCA/RCAPage').then(m => (
         <FeatureGatedContent feature="observability">
@@ -263,14 +284,15 @@ const rcaReportsEntityContent = EntityContentBlueprint.make({
   },
 });
 
-const costAnalysisEntityContent = EntityContentBlueprint.make({
-  name: 'cost-analysis',
+const projectCostAnalysisEntityContent = EntityContentBlueprint.make({
+  name: 'project-cost-analysis',
   params: {
     path: '/cost-analysis',
     title: 'Cost Analysis',
-    filter: 'kind:system',
+    group: 'analysis',
+    filter: isOpenChoreoManagedOfKind('system'),
     loader: () =>
-      import('./components/CostAnalysis').then(m => (
+      import('./components/CostAnalysis/CostAnalysisPage').then(m => (
         <FeatureGatedContent feature="observability">
           <m.CostAnalysisPage />
         </FeatureGatedContent>
@@ -279,13 +301,47 @@ const costAnalysisEntityContent = EntityContentBlueprint.make({
 });
 
 /**
- * NFS entry point for the OpenChoreo Observability plugin.
- *
- * Registers the three observability backend clients, the log-row-action
- * registry API, the component-page entity tabs (Logs, Events, Metrics,
- * Alerts, Wirelogs) and the system-page entity tabs (Logs, Traces,
- * Incidents, RCA Reports, Cost Analysis).
+ * Cost Insights summary card, shown on the Component and Project (System)
+ * overview pages. Filtered to entities carrying the openchoreo namespace
+ * annotation (the scope the card resolves cost by) and gated on the
+ * observability feature so it vanishes when the host has it disabled.
  */
+const costInsightsSummaryCard = EntityCardBlueprint.make({
+  name: 'cost-insights-summary',
+  params: {
+    // Small summary tile — renders in the right-rail info column of any
+    // layout that uses `DefaultEntityContentLayout` or our
+    // `ForeignCardsSection` (base plugin's Component / System layouts).
+    type: 'info',
+    filter: entity =>
+      isOpenChoreoManagedOfKind('component', 'system')(entity) &&
+      Boolean(entity.metadata.annotations?.[CHOREO_ANNOTATIONS.NAMESPACE]),
+    loader: () =>
+      import('./components/CostInsights/CostInsightsSummaryCard').then(m => (
+        <FeatureGate feature="observability">
+          <m.CostInsightsSummaryCard />
+        </FeatureGate>
+      )),
+  },
+});
+
+// Ships title + icon so adopters auto-get a sidebar entry via DefaultNavContent.
+const costInsightsPage = PageBlueprint.make({
+  name: 'cost-insights',
+  params: {
+    path: '/cost-insights',
+    routeRef: rootRouteRef,
+    title: 'Cost Insights',
+    icon: <MonetizationOnIcon />,
+    // Page renders its own <Page><Header>; suppress outer PageLayout header.
+    noHeader: true,
+    loader: () =>
+      import('./components/CostInsights/CostInsightsPage').then(m => (
+        <m.CostInsightsPage />
+      )),
+  },
+});
+
 export default createFrontendPlugin({
   pluginId: 'openchoreo-observability',
   routes: { root: rootRouteRef },
@@ -295,6 +351,7 @@ export default createFrontendPlugin({
     rcaAgentApi,
     finopsAgentApi,
     logRowActionRendererApi,
+    costInsightsPage,
     runtimeLogsEntityContent,
     runtimeEventsEntityContent,
     metricsEntityContent,
@@ -304,6 +361,7 @@ export default createFrontendPlugin({
     tracesEntityContent,
     projectIncidentsEntityContent,
     rcaReportsEntityContent,
-    costAnalysisEntityContent,
+    projectCostAnalysisEntityContent,
+    costInsightsSummaryCard,
   ],
 });

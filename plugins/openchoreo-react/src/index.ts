@@ -187,11 +187,16 @@ export {
   useAutoLoadWhenEmpty,
   type UseAutoLoadWhenEmptyOptions,
 } from './hooks/useAutoLoadWhenEmpty';
+export { useQueryParams } from './hooks/useQueryParams';
 export {
   useEntityAnnotation,
   useHasAnnotation,
   useHasAnyAnnotation,
 } from './hooks/useEntityAnnotation';
+export {
+  useEntityDeletePermission,
+  type UseEntityDeletePermissionResult,
+} from './hooks/useEntityDeletePermission';
 export {
   useOpenChoreoFeatures,
   useWorkflowsEnabled,

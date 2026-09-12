@@ -47,7 +47,8 @@ const costItem = (over: Record<string, unknown> = {}) => ({
 const baseParams = (
   over: Partial<UseCostInsightsParams> = {},
 ): UseCostInsightsParams => ({
-  scope: { namespace: 'default' },
+  scopes: [{ namespace: 'default' }],
+  level: 'namespace',
   environments: ['dev'],
   timeRange: '1h',
   view: 'table',
@@ -88,6 +89,47 @@ describe('useCostInsights', () => {
     expect(result.current.error).toBeNull();
   });
 
+  it('fans out over every scope and environment and aggregates the union', async () => {
+    getCosts.mockImplementation((ns: string) =>
+      Promise.resolve({
+        items: [costItem({ namespace: ns, project: ns === 'a' ? 'p1' : 'p2' })],
+      }),
+    );
+
+    const { result } = renderHook(
+      () =>
+        useCostInsights(
+          baseParams({
+            scopes: [{ namespace: 'a' }, { namespace: 'b' }],
+            level: 'namespace',
+            environments: ['dev'],
+          }),
+        ),
+      { wrapper: createQueryWrapper() },
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    // 2 scopes × 1 env × (current + previous) = 4 cost calls.
+    expect(getCosts).toHaveBeenCalledTimes(4);
+    const keys = result.current.data?.rows.map(r => r.key) ?? [];
+    expect(keys).toEqual(expect.arrayContaining(['p1', 'p2']));
+  });
+
+  it('dedupes repeated environments so requests and totals are not doubled', async () => {
+    const { result } = renderHook(
+      () => useCostInsights(baseParams({ environments: ['dev', 'dev'] })),
+      { wrapper: createQueryWrapper() },
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    // The duplicate env collapses to one: 1 env × (current + previous) = 2 calls.
+    expect(getCosts).toHaveBeenCalledTimes(2);
+    // A single dev item (cpu 10 + mem 12), not double-counted.
+    expect(result.current.data?.summary.totalCost).toBe(22);
+  });
+
   it('requests recommendations at the component level', async () => {
     getCostRecommendations.mockResolvedValue({
       items: [
@@ -106,7 +148,10 @@ describe('useCostInsights', () => {
       () =>
         useCostInsights(
           baseParams({
-            scope: { namespace: 'default', project: 'gcp', component: 'comp' },
+            scopes: [
+              { namespace: 'default', project: 'gcp', component: 'comp' },
+            ],
+            level: 'component',
             environments: ['dev'],
           }),
         ),
@@ -142,7 +187,10 @@ describe('useCostInsights', () => {
       () =>
         useCostInsights(
           baseParams({
-            scope: { namespace: 'default', project: 'gcp', component: 'comp' },
+            scopes: [
+              { namespace: 'default', project: 'gcp', component: 'comp' },
+            ],
+            level: 'component',
             environments: ['dev'],
           }),
         ),
@@ -186,7 +234,10 @@ describe('useCostInsights', () => {
       () =>
         useCostInsights(
           baseParams({
-            scope: { namespace: 'default', project: 'gcp', component: 'comp' },
+            scopes: [
+              { namespace: 'default', project: 'gcp', component: 'comp' },
+            ],
+            level: 'component',
             environments: ['dev'],
           }),
         ),
@@ -207,15 +258,42 @@ describe('useCostInsights', () => {
 
     await waitFor(() => expect(result.current.loading).toBe(false));
 
-    // The first call is the current window and carries the granularity.
-    expect(getCosts.mock.calls[0][2]).toEqual(
-      expect.objectContaining({ granularity: '6h' }),
+    // Graph view fetches an accumulated window (no granularity) plus a bucketed
+    // time-series window that carries the granularity.
+    const opts = getCosts.mock.calls.map(c => c[2]);
+    expect(opts).toEqual(
+      expect.arrayContaining([expect.objectContaining({ granularity: '6h' })]),
     );
+    expect(
+      opts.some(o => o && !('granularity' in o) && o.startTime && o.endTime),
+    ).toBe(true);
+  });
+
+  it('keeps summary and rows when only the granular series call fails', async () => {
+    // Fail only the bucketed (granularity-carrying) request; the accumulated and
+    // previous windows still resolve.
+    getCosts.mockImplementation((_ns: string, _env: string, opts: any) =>
+      opts?.granularity
+        ? Promise.reject(new Error('series unavailable'))
+        : Promise.resolve({ items: [costItem()] }),
+    );
+
+    const { result } = renderHook(
+      () => useCostInsights(baseParams({ view: 'graph', granularity: '6h' })),
+      { wrapper: createQueryWrapper() },
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.error).toBeNull();
+    expect(result.current.data?.summary.totalCost).toBeGreaterThan(0);
+    expect(result.current.data?.rows.length).toBeGreaterThan(0);
+    // The time-series chart just has no data.
+    expect(result.current.data?.series).toEqual([]);
   });
 
   it('is disabled without a namespace or environments', async () => {
     const { result: noNs } = renderHook(
-      () => useCostInsights(baseParams({ scope: {} })),
+      () => useCostInsights(baseParams({ scopes: [] })),
       { wrapper: createQueryWrapper() },
     );
     const { result: noEnvs } = renderHook(
